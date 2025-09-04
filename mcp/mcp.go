@@ -18,7 +18,7 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/lightpanda-io/gomcp/rpc"
+	"github.com/jiahut/gomcp/rpc"
 )
 
 // https://github.com/modelcontextprotocol/modelcontextprotocol/blob/main/schema/2025-03-26/schema.ts

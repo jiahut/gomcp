@@ -23,7 +23,7 @@ import (
 	"io"
 	"log/slog"
 
-	"github.com/lightpanda-io/gomcp/mcp"
+	"github.com/jiahut/gomcp/mcp"
 )
 
 func runstd(ctx context.Context, in io.Reader, out io.Writer, mcpsrv *MCPServer) error {

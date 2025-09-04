@@ -20,7 +20,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/lightpanda-io/gomcp/mcp"
+	"github.com/jiahut/gomcp/mcp"
 )
 
 var InvalidSessionId = errors.New("invalid session id")

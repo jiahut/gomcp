@@ -1,4 +1,4 @@
-module github.com/lightpanda-io/gomcp
+module github.com/jiahut/gomcp
 
 go 1.24.2
 

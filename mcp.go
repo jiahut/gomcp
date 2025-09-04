@@ -21,15 +21,14 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
-	"net/url"
 	"strings"
 
 	md "github.com/JohannesKaufmann/html-to-markdown"
 	"github.com/chromedp/cdproto/cdp"
 	"github.com/chromedp/chromedp"
 
-	"github.com/lightpanda-io/gomcp/mcp"
-	"github.com/lightpanda-io/gomcp/rpc"
+	"github.com/jiahut/gomcp/mcp"
+	"github.com/jiahut/gomcp/rpc"
 )
 
 // A connection with a client
@@ -153,13 +152,13 @@ func (s *MCPServer) ListTools() []mcp.Tool {
 				"url": mcp.NewSchemaString("The URL to navigate to, must be a valid URL."),
 			}),
 		},
-		{
-			Name:        "search",
-			Description: "Use a search engine to look for specific words, terms, sentences. The search page will then be loaded in memory.",
-			InputSchema: mcp.NewSchemaObject(mcp.Properties{
-				"text": mcp.NewSchemaString("The text to search for, must be a valid search query."),
-			}),
-		},
+		// {
+		// 	Name:        "search",
+		// 	Description: "Use a search engine to look for specific words, terms, sentences. The search page will then be loaded in memory.",
+		// 	InputSchema: mcp.NewSchemaObject(mcp.Properties{
+		// 		"text": mcp.NewSchemaString("The text to search for, must be a valid search query."),
+		// 	}),
+		// },
 		{
 			Name:        "markdown",
 			Description: "Get the page content in markdown format.",
@@ -199,22 +198,22 @@ func (s *MCPServer) CallTool(ctx context.Context, conn *MCPConn, req mcp.ToolsCa
 			return "", errors.New("no url")
 		}
 		return conn.Goto(args.URL)
-	case "search":
-		var args struct {
-			Text string `json:"text"`
-		}
+	// case "search":
+	// 	var args struct {
+	// 		Text string `json:"text"`
+	// 	}
 
-		if err := json.Unmarshal(v, &args); err != nil {
-			return "", fmt.Errorf("args decode: %w", err)
-		}
+	// 	if err := json.Unmarshal(v, &args); err != nil {
+	// 		return "", fmt.Errorf("args decode: %w", err)
+	// 	}
 
-		if args.Text == "" {
-			return "", errors.New("no text")
-		}
+	// 	if args.Text == "" {
+	// 		return "", errors.New("no text")
+	// 	}
 
-		var urlString = "https://duckduckgo.com/?q=" + url.QueryEscape(args.Text)
+	// 	var urlString = "https://duckduckgo.com/?q=" + url.QueryEscape(args.Text)
 
-		return conn.Goto(urlString)
+	// 	return conn.Goto(urlString)
 	case "markdown":
 		return conn.GetMarkdown()
 	case "links":
