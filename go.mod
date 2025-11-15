@@ -7,6 +7,7 @@ require (
 	github.com/chromedp/cdproto v0.0.0-20250403032234-65de8f5d025b
 	github.com/chromedp/chromedp v0.13.6
 	github.com/gin-contrib/sse v1.1.0
+	github.com/gofrs/flock v0.12.1
 	github.com/google/uuid v1.6.0
 )
 

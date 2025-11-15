@@ -21,6 +21,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"net"
 	"net/url"
 	"os"
 	"os/signal"
@@ -88,13 +89,35 @@ func run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.
 		slog.SetLogLoggerLevel(slog.LevelDebug)
 	}
 
+	endpointStore, err := newCDPEndpointStore()
+	if err != nil {
+		slog.Warn("cdp endpoint cache disabled", slog.Any("err", err))
+	}
+
+	resolvedCDP := *cdp
+	key := ""
+	if resolved, hostKey, err := resolveCDPEndpoint(ctx, *cdp, endpointStore); err != nil {
+		slog.Warn("resolve cdp", slog.Any("err", err))
+		key, _ = cdpStoreKey(*cdp)
+	} else {
+		resolvedCDP = resolved
+		key = hostKey
+	}
+
+	var tabStore *targetStore
+	if key != "" {
+		if store, err := newTargetStore(key); err != nil {
+			slog.Warn("init tab cache", slog.Any("err", err))
+		} else {
+			tabStore = store
+		}
+	}
+
 	// Connect to CDP browser
-	cdpctx, cancel := chromedp.NewRemoteAllocator(ctx,
-		*cdp, chromedp.NoModifyURL,
-	)
+	cdpctx, cancel := chromedp.NewRemoteAllocator(ctx, resolvedCDP, chromedp.NoModifyURL)
 	defer cancel()
 
-	mcpsrv := NewMCPServer("lightpanda go mcp", "1.0.0", cdpctx)
+	mcpsrv := NewMCPServer("lightpanda go mcp", "1.0.0", cdpctx, tabStore)
 
 	switch args[0] {
 	case "search":
@@ -115,6 +138,27 @@ func env(key, dflt string) string {
 	}
 
 	return val
+}
+
+func cdpStoreKey(raw string) (string, error) {
+	if raw == "" {
+		return "", errors.New("empty cdp address")
+	}
+	addr := raw
+	if !strings.Contains(addr, "://") {
+		addr = "ws://" + addr
+	}
+	u, err := url.Parse(addr)
+	if err != nil {
+		return "", fmt.Errorf("parse cdp url: %w", err)
+	}
+	if u.Host == "" {
+		return "", fmt.Errorf("missing host in cdp url: %s", raw)
+	}
+	if _, _, err := net.SplitHostPort(u.Host); err != nil {
+		u.Host = net.JoinHostPort(u.Host, "9222")
+	}
+	return u.Host, nil
 }
 
 // runSearch performs a web search and returns the results

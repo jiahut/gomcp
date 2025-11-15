@@ -23,9 +23,11 @@ import (
 	"log/slog"
 	"net/url"
 	"strings"
+	"time"
 
 	md "github.com/JohannesKaufmann/html-to-markdown"
 	"github.com/chromedp/cdproto/cdp"
+	"github.com/chromedp/cdproto/target"
 	"github.com/chromedp/chromedp"
 
 	"github.com/lightpanda-io/gomcp/mcp"
@@ -37,22 +39,71 @@ type MCPConn struct {
 	srv       *MCPServer
 	cdpctx    context.Context
 	cdpcancel context.CancelFunc
+	targetID  target.ID
 }
 
 func (c *MCPConn) Close() {
-	if c.cdpcancel != nil {
-		c.cdpcancel()
+	if c.cdpctx != nil {
+		if chromedpCtx := chromedp.FromContext(c.cdpctx); chromedpCtx != nil && chromedpCtx.Target != nil {
+			if chromedpCtx.Target.SessionID != "" {
+				detachCtx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+				defer cancel()
+				exec := cdp.WithExecutor(detachCtx, chromedpCtx.Browser)
+				if err := target.DetachFromTarget().WithSessionID(chromedpCtx.Target.SessionID).Do(exec); err != nil {
+					slog.Debug("detach target", slog.String("target", string(chromedpCtx.Target.TargetID)), slog.Any("err", err))
+				}
+			}
+			// Prevent the cancellation path from calling CloseTarget so the tab stays alive.
+			chromedpCtx.Target = nil
+		}
+
+		if c.cdpcancel != nil {
+			c.cdpcancel()
+		}
+
+		c.cdpctx = nil
+		c.cdpcancel = nil
+	}
+
+	if c.srv.targets != nil && c.targetID != "" {
+		if err := c.srv.targets.Checkin(string(c.targetID)); err != nil {
+			slog.Warn("return tab to pool", slog.Any("err", err))
+		}
+		c.targetID = ""
 	}
 }
 
 func (c *MCPConn) connect() error {
-	if c.cdpcancel != nil {
-		c.cdpcancel()
+	if c.cdpctx != nil {
+		return nil
+	}
+
+	if c.srv.targets != nil {
+		for {
+			cached, err := c.srv.targets.Checkout()
+			if err != nil {
+				slog.Warn("checkout tab", slog.Any("err", err))
+				break
+			}
+			if cached == "" {
+				break
+			}
+
+			ctx, cancel := chromedp.NewContext(c.srv.cdpctx, chromedp.WithTargetID(target.ID(cached)))
+			if err := chromedp.Run(ctx); err == nil {
+				c.cdpctx = ctx
+				c.cdpcancel = cancel
+				c.targetID = target.ID(cached)
+				return nil
+			}
+			cancel()
+			slog.Warn("attach stored tab failed", slog.String("target", cached))
+		}
 	}
 
 	ctx, cancel := chromedp.NewContext(c.srv.cdpctx)
 
-	// ensure the first tab is created
+	// ensure we have a tab to reuse across tool invocations
 	if err := chromedp.Run(ctx); err != nil {
 		cancel()
 		return fmt.Errorf("new tab: %w", err)
@@ -60,6 +111,10 @@ func (c *MCPConn) connect() error {
 
 	c.cdpctx = ctx
 	c.cdpcancel = cancel
+
+	if chromedpCtx := chromedp.FromContext(ctx); chromedpCtx != nil && chromedpCtx.Target != nil {
+		c.targetID = chromedpCtx.Target.TargetID
+	}
 
 	return nil
 }
@@ -126,14 +181,16 @@ type MCPServer struct {
 	Name    string
 	Version string
 
-	cdpctx context.Context
+	cdpctx  context.Context
+	targets *targetStore
 }
 
-func NewMCPServer(name, version string, cdpctx context.Context) *MCPServer {
+func NewMCPServer(name, version string, cdpctx context.Context, targets *targetStore) *MCPServer {
 	return &MCPServer{
 		Name:    name,
 		Version: version,
 		cdpctx:  cdpctx,
+		targets: targets,
 	}
 }
 
