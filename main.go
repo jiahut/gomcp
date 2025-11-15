@@ -68,9 +68,10 @@ func run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.
 	// usage func declaration.
 	exec := args[0]
 	flags.Usage = func() {
-		fmt.Fprintf(stderr, "usage: %s search|fetch [args]\n", exec)
+		fmt.Fprintf(stderr, "usage: %s google|duckduckgo|fetch [args]\n", exec)
 		fmt.Fprintf(stderr, "\nCommands:\n")
-		fmt.Fprintf(stderr, "\tsearch\t\tweb search and return results\n")
+		fmt.Fprintf(stderr, "\tgoogle\t\tsearch using google\n")
+		fmt.Fprintf(stderr, "\tduckduckgo\tsearch using duckduckgo\n")
 		fmt.Fprintf(stderr, "\tfetch\t\tfetch URL and return markdown content\n")
 		fmt.Fprintf(stderr, "\nCommand line options:\n")
 		flags.PrintDefaults()
@@ -117,11 +118,13 @@ func run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.
 	cdpctx, cancel := chromedp.NewRemoteAllocator(ctx, resolvedCDP, chromedp.NoModifyURL)
 	defer cancel()
 
-	mcpsrv := NewMCPServer("lightpanda go mcp", "1.0.0", cdpctx, tabStore)
+	mcpsrv := NewMCPServer("chromedp mcp", "1.0.0", cdpctx, tabStore)
 
 	switch args[0] {
-	case "search":
-		return runSearch(ctx, args[1:], mcpsrv, stderr)
+	case "google":
+		return runGoogle(ctx, args[1:], mcpsrv, stderr)
+	case "duckduckgo":
+		return runDuckDuckGo(ctx, args[1:], mcpsrv, stderr)
 	case "fetch":
 		return runFetch(ctx, args[1:], mcpsrv, stderr)
 	}
@@ -162,21 +165,20 @@ func cdpStoreKey(raw string) (string, error) {
 }
 
 // runSearch performs a web search and returns the results
-func runSearch(ctx context.Context, args []string, mcpsrv *MCPServer, stderr io.Writer) error {
+func runDuckDuckGo(ctx context.Context, args []string, mcpsrv *MCPServer, stderr io.Writer) error {
 	if len(args) == 0 {
 		return errors.New(`search query is required
 
 Usage:
-  gomcp search <query>
+  gomcp duckduckgo <query>
 
 Description:
-  Perform a web search using DuckDuckGo and return a list of results
-  including titles, links, and snippets.
+  Perform a web search using DuckDuckGo and return a list of results including titles, links, and snippets.
 
 Example:
-  gomcp search "Go programming language"
-  gomcp search "人工智能最新进展"
-  gomcp search "golang tutorial beginner"`)
+  gomcp duckduckgo "Go programming language"
+  gomcp duckduckgo "人工智能最新进展"
+  gomcp duckduckgo "golang tutorial beginner"`)
 	}
 
 	// Join all arguments to form the search query (allows spaces in search terms)
@@ -247,6 +249,95 @@ Example:
 	return nil
 }
 
+// runSearch performs a web search via Google and returns the results
+func runGoogle(ctx context.Context, args []string, mcpsrv *MCPServer, stderr io.Writer) error {
+	if len(args) == 0 {
+		return errors.New(`search query is required
+
+Usage:
+  gomcp google <query>
+
+Description:
+  Perform a web search using Google and return a list of results including titles, links, and snippets.
+
+Example:
+  gomcp google "Go programming language"
+  gomcp google "人工智能最新进展"
+  gomcp google "golang tutorial beginner"`)
+	}
+
+	// Join all arguments to form the search query (allows spaces in search terms)
+	query := strings.Join(args, " ")
+
+	conn := mcpsrv.NewConn()
+	defer conn.Close()
+
+	// Perform search using Google
+	searchURL := "https://www.google.com/search?hl=en&q=" + url.QueryEscape(query)
+	if _, err := conn.Goto(searchURL); err != nil {
+		return fmt.Errorf("search failed: %w", err)
+	}
+
+	slog.Info("Searching for", slog.String("query", query))
+
+	// Wait for results to load
+	chromedp.Run(conn.cdpctx, chromedp.Sleep(2*time.Second))
+
+	// Extract search results
+	var results []SearchResult
+	err := chromedp.Run(conn.cdpctx,
+		chromedp.Evaluate(`(() => {
+			const blocks = Array.from(document.querySelectorAll('#search .g, #search .Gx5Zad, #search .MjjYud, #search .kvH3mc, #search .P8uan8'));
+			const results = [];
+
+			for (const block of blocks) {
+				const titleNode = block.querySelector('h3');
+				const linkNode = titleNode ? titleNode.closest('a[href]') || block.querySelector('a[href]') : block.querySelector('a[href]');
+				if (!titleNode || !linkNode) {
+					continue;
+				}
+
+				const href = linkNode.href || '';
+				const title = titleNode.textContent?.trim() || '';
+				if (!href || !title || href.startsWith('javascript:') || href.startsWith('/')) {
+					continue;
+				}
+
+				const snippetNode = block.querySelector('.VwiC3b, .aCOpRe, .MUxGbd, .lyLwlc, .NJo7tc span, div[data-sncf="1"] span');
+				const snippet = snippetNode ? (snippetNode.textContent?.trim() || '') : '';
+
+				results.push({ title, link: href, snippet });
+			}
+
+			return results
+				.filter((item) => item.title && item.link)
+				.slice(0, 10);
+		})()`, &results),
+	)
+
+	if err != nil {
+		return fmt.Errorf("extract results: %w", err)
+	}
+
+	if len(results) == 0 {
+		fmt.Fprintf(stderr, "No results found for query: %s\n", query)
+		return nil
+	}
+
+	// Print results
+	fmt.Printf("Search results for: %s\n\n", query)
+	for i, result := range results {
+		fmt.Printf("%d. %s\n", i+1, result.Title)
+		fmt.Printf("   Link: %s\n", result.Link)
+		if result.Snippet != "" {
+			fmt.Printf("   Snippet: %s\n", result.Snippet)
+		}
+		fmt.Println()
+	}
+
+	return nil
+}
+
 // runFetch fetches a URL and returns its markdown content
 func runFetch(ctx context.Context, args []string, mcpsrv *MCPServer, stderr io.Writer) error {
 	if len(args) == 0 {
@@ -257,9 +348,7 @@ Usage:
 
 Description:
   Fetch a webpage from the given URL and return its content in
-  Markdown format. This is useful for converting web pages to
-  readable text or extracting content for further processing.
-
+  Markdown format. 
 Example:
   gomcp fetch "https://go.dev"
   gomcp fetch "https://example.com" > page.md

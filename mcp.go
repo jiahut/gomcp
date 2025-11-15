@@ -211,8 +211,15 @@ func (s *MCPServer) ListTools() []mcp.Tool {
 			}),
 		},
 		{
-			Name:        "search",
-			Description: "Use a search engine to look for specific words, terms, sentences. The search page will then be loaded in memory.",
+			Name:        "duckduckgo",
+			Description: "Use DuckDuckGo to search for specific words, terms, or sentences. The search page will then be loaded in memory.",
+			InputSchema: mcp.NewSchemaObject(mcp.Properties{
+				"text": mcp.NewSchemaString("The text to search for, must be a valid search query."),
+			}),
+		},
+		{
+			Name:        "google",
+			Description: "Use Google to search for specific words, terms, or sentences via google.com. The search page will then be loaded in memory.",
 			InputSchema: mcp.NewSchemaObject(mcp.Properties{
 				"text": mcp.NewSchemaString("The text to search for, must be a valid search query."),
 			}),
@@ -256,7 +263,7 @@ func (s *MCPServer) CallTool(ctx context.Context, conn *MCPConn, req mcp.ToolsCa
 			return "", errors.New("no url")
 		}
 		return conn.Goto(args.URL)
-	case "search":
+	case "duckduckgo":
 		var args struct {
 			Text string `json:"text"`
 		}
@@ -269,9 +276,21 @@ func (s *MCPServer) CallTool(ctx context.Context, conn *MCPConn, req mcp.ToolsCa
 			return "", errors.New("no text")
 		}
 
-		var urlString = "https://duckduckgo.com/?q=" + url.QueryEscape(args.Text)
+		return conn.Goto("https://duckduckgo.com/?q=" + url.QueryEscape(args.Text))
+	case "google":
+		var args struct {
+			Text string `json:"text"`
+		}
 
-		return conn.Goto(urlString)
+		if err := json.Unmarshal(v, &args); err != nil {
+			return "", fmt.Errorf("args decode: %w", err)
+		}
+
+		if args.Text == "" {
+			return "", errors.New("no text")
+		}
+
+		return conn.Goto("https://www.google.com/search?q=" + url.QueryEscape(args.Text))
 	case "markdown":
 		return conn.GetMarkdown()
 	case "links":
