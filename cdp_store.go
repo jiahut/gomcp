@@ -97,7 +97,51 @@ func (s *cdpEndpointStore) write(state cdpEndpointState) error {
 	return os.Rename(tmp, s.path)
 }
 
-func resolveCDPEndpoint(ctx context.Context, raw string, store *cdpEndpointStore) (string, string, error) {
+func resolveCDPEndpoint(ctx context.Context, raw string, store *cdpEndpointStore) (string, string, bool, error) {
+	u, host, err := normalizeCDPURL(raw)
+	if err != nil {
+		return "", "", false, err
+	}
+	if strings.Contains(u.Path, "/devtools/browser/") {
+		return u.String(), host, false, nil
+	}
+	if store != nil {
+		if cached, ok, err := store.Get(host); err == nil && ok {
+			return cached, host, true, nil
+		} else if err != nil {
+			slog.Warn("read cached cdp endpoint", slog.Any("err", err))
+		}
+	}
+	wsURL, err := fetchWebsocketDebuggerURL(ctx, u.Scheme, host)
+	if err != nil {
+		return u.String(), host, false, err
+	}
+	if store != nil {
+		if err := store.Remember(host, wsURL); err != nil {
+			slog.Warn("remember cdp endpoint", slog.Any("err", err))
+		}
+	}
+	return wsURL, host, false, nil
+}
+
+func refreshCDPEndpoint(ctx context.Context, raw string, store *cdpEndpointStore) (string, string, error) {
+	u, host, err := normalizeCDPURL(raw)
+	if err != nil {
+		return "", "", err
+	}
+	wsURL, err := fetchWebsocketDebuggerURL(ctx, u.Scheme, host)
+	if err != nil {
+		return "", host, err
+	}
+	if store != nil {
+		if err := store.Remember(host, wsURL); err != nil {
+			slog.Warn("remember refreshed cdp endpoint", slog.Any("err", err))
+		}
+	}
+	return wsURL, host, nil
+}
+
+func normalizeCDPURL(raw string) (*url.URL, string, error) {
 	norm := raw
 	if norm == "" {
 		norm = "ws://127.0.0.1:9222"
@@ -107,36 +151,17 @@ func resolveCDPEndpoint(ctx context.Context, raw string, store *cdpEndpointStore
 	}
 	u, err := url.Parse(norm)
 	if err != nil {
-		return "", "", fmt.Errorf("parse cdp url: %w", err)
+		return nil, "", fmt.Errorf("parse cdp url: %w", err)
 	}
 	if u.Host == "" {
-		return "", "", fmt.Errorf("missing host in cdp url: %s", raw)
+		return nil, "", fmt.Errorf("missing host in cdp url: %s", raw)
 	}
 	host := u.Host
 	if _, _, err := net.SplitHostPort(host); err != nil {
 		host = net.JoinHostPort(host, "9222")
 		u.Host = host
 	}
-	if strings.Contains(u.Path, "/devtools/browser/") {
-		return u.String(), host, nil
-	}
-	if store != nil {
-		if cached, ok, err := store.Get(host); err == nil && ok {
-			return cached, host, nil
-		} else if err != nil {
-			slog.Warn("read cached cdp endpoint", slog.Any("err", err))
-		}
-	}
-	wsURL, err := fetchWebsocketDebuggerURL(ctx, u.Scheme, host)
-	if err != nil {
-		return u.String(), host, err
-	}
-	if store != nil {
-		if err := store.Remember(host, wsURL); err != nil {
-			slog.Warn("remember cdp endpoint", slog.Any("err", err))
-		}
-	}
-	return wsURL, host, nil
+	return u, host, nil
 }
 
 func fetchWebsocketDebuggerURL(ctx context.Context, scheme, host string) (string, error) {

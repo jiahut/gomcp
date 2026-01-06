@@ -25,6 +25,7 @@ import (
 	"net/url"
 	"os"
 	"os/signal"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -68,11 +69,12 @@ func run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.
 	// usage func declaration.
 	exec := args[0]
 	flags.Usage = func() {
-		fmt.Fprintf(stderr, "usage: %s google|duckduckgo|fetch [args]\n", exec)
+		fmt.Fprintf(stderr, "usage: %s google|duckduckgo|fetch|warm-tabs [args]\n", exec)
 		fmt.Fprintf(stderr, "\nCommands:\n")
 		fmt.Fprintf(stderr, "\tgoogle\t\tsearch using google\n")
 		fmt.Fprintf(stderr, "\tduckduckgo\tsearch using duckduckgo\n")
 		fmt.Fprintf(stderr, "\tfetch\t\tfetch URL and return markdown content\n")
+		fmt.Fprintf(stderr, "\twarm-tabs\tprewarm reusable browser tabs\n")
 		fmt.Fprintf(stderr, "\nCommand line options:\n")
 		flags.PrintDefaults()
 	}
@@ -97,12 +99,14 @@ func run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.
 
 	resolvedCDP := *cdp
 	key := ""
-	if resolved, hostKey, err := resolveCDPEndpoint(ctx, *cdp, endpointStore); err != nil {
+	usedCachedEndpoint := false
+	if resolved, hostKey, cached, err := resolveCDPEndpoint(ctx, *cdp, endpointStore); err != nil {
 		slog.Warn("resolve cdp", slog.Any("err", err))
 		key, _ = cdpStoreKey(*cdp)
 	} else {
 		resolvedCDP = resolved
 		key = hostKey
+		usedCachedEndpoint = cached
 	}
 
 	var tabStore *targetStore
@@ -116,17 +120,61 @@ func run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.
 
 	// Connect to CDP browser
 	cdpctx, cancel := chromedp.NewRemoteAllocator(ctx, resolvedCDP, chromedp.NoModifyURL)
-	defer cancel()
+	defer func() {
+		if cancel != nil {
+			cancel()
+		}
+	}()
+	if usedCachedEndpoint {
+		if err := validateCDPAllocator(cdpctx); err != nil {
+			slog.Warn("cached cdp endpoint invalid, refreshing", slog.Any("err", err))
+			cancel()
+			cancel = nil
+			refreshed, hostKey, err := refreshCDPEndpoint(ctx, *cdp, endpointStore)
+			if err != nil {
+				return fmt.Errorf("refresh cdp endpoint: %w", err)
+			}
+			resolvedCDP = refreshed
+			key = hostKey
+			cdpctx, cancel = chromedp.NewRemoteAllocator(ctx, resolvedCDP, chromedp.NoModifyURL)
+			if err := validateCDPAllocator(cdpctx); err != nil {
+				return fmt.Errorf("connect refreshed cdp endpoint: %w", err)
+			}
+		}
+	}
 
 	mcpsrv := NewMCPServer("chromedp mcp", "1.0.0", cdpctx, tabStore)
 
-	switch args[0] {
+	cmd := args[0]
+	var warmOpts *warmTabsOptions
+	if cmd == "warm-tabs" {
+		opts, err := parseWarmTabsArgs(args[1:])
+		if err != nil {
+			return err
+		}
+		warmOpts = &opts
+	}
+	if shouldRunGC(cmd) && tabStore != nil {
+		force := warmOpts != nil && warmOpts.force
+		if removed, ran, err := tabStore.GC(ctx, cdpctx, force); err != nil {
+			slog.Warn("tab gc", slog.Any("err", err))
+		} else if ran && removed > 0 {
+			slog.Info("tab gc removed stale targets", slog.Int("removed", removed))
+		}
+	}
+
+	switch cmd {
 	case "google":
 		return runGoogle(ctx, args[1:], mcpsrv, stderr)
 	case "duckduckgo":
 		return runDuckDuckGo(ctx, args[1:], mcpsrv, stderr)
 	case "fetch":
 		return runFetch(ctx, args[1:], mcpsrv, stderr)
+	case "warm-tabs":
+		if warmOpts == nil {
+			return errors.New("warm tab options unavailable")
+		}
+		return runWarmTabs(ctx, *warmOpts, mcpsrv, stdout)
 	}
 
 	flags.Usage()
@@ -384,4 +432,66 @@ type SearchResult struct {
 	Title   string `json:"title"`
 	Link    string `json:"link"`
 	Snippet string `json:"snippet"`
+}
+
+type warmTabsOptions struct {
+	count int
+	force bool
+}
+
+func parseWarmTabsArgs(args []string) (warmTabsOptions, error) {
+	opts := warmTabsOptions{count: 3}
+	i := 0
+	for i < len(args) {
+		arg := args[i]
+		switch arg {
+		case "-force", "--force":
+			opts.force = true
+			i++
+		case "-n", "--count":
+			i++
+			if i >= len(args) {
+				return opts, errors.New("missing value for -n")
+			}
+			n, err := strconv.Atoi(args[i])
+			if err != nil || n <= 0 {
+				return opts, fmt.Errorf("invalid tab count: %s", args[i])
+			}
+			opts.count = n
+			i++
+		default:
+			n, err := strconv.Atoi(arg)
+			if err != nil || n <= 0 {
+				return opts, fmt.Errorf("unknown warm-tabs arg: %s", arg)
+			}
+			opts.count = n
+			i++
+		}
+	}
+	return opts, nil
+}
+
+func runWarmTabs(ctx context.Context, opts warmTabsOptions, mcpsrv *MCPServer, stdout io.Writer) error {
+	if mcpsrv == nil || mcpsrv.targets == nil {
+		return errors.New("tab cache unavailable for this CDP endpoint")
+	}
+	desired := opts.count
+	if desired <= 0 {
+		desired = 3
+	}
+	warmed, err := mcpsrv.targets.Warm(ctx, mcpsrv.cdpctx, desired)
+	if err != nil {
+		return err
+	}
+	fmt.Fprintf(stdout, "tab cache warmed: requested=%d newly_created=%d\n", desired, warmed)
+	return nil
+}
+
+func shouldRunGC(cmd string) bool {
+	switch cmd {
+	case "google", "duckduckgo", "fetch", "warm-tabs":
+		return true
+	default:
+		return false
+	}
 }

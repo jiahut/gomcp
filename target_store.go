@@ -1,15 +1,20 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"sort"
 	"strings"
 	"sync"
+	"time"
 
+	"github.com/chromedp/cdproto/target"
+	"github.com/chromedp/chromedp"
 	"github.com/gofrs/flock"
 )
 
@@ -18,9 +23,11 @@ import (
 // future callers. This lets concurrent commands run without contending for the
 // same page while still avoiding new browser processes.
 type targetStore struct {
-	mu   sync.Mutex
-	path string
-	lock *flock.Flock
+	mu         sync.Mutex
+	path       string
+	lock       *flock.Flock
+	lastGC     time.Time
+	gcInterval time.Duration
 }
 
 type targetState struct {
@@ -41,9 +48,123 @@ func newTargetStore(key string) (*targetStore, error) {
 	lockPath := statePath + ".lock"
 
 	return &targetStore{
-		path: statePath,
-		lock: flock.New(lockPath),
+		path:       statePath,
+		lock:       flock.New(lockPath),
+		gcInterval: time.Minute,
 	}, nil
+}
+
+func (s *targetStore) IdleCount() (int, error) {
+	if s == nil {
+		return 0, nil
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if err := s.lock.Lock(); err != nil {
+		return 0, fmt.Errorf("acquire tab lock: %w", err)
+	}
+	defer s.lock.Unlock()
+	state, err := s.read()
+	if err != nil {
+		return 0, err
+	}
+	return len(state.Idle), nil
+}
+
+func (s *targetStore) Warm(ctx context.Context, base context.Context, desired int) (int, error) {
+	if s == nil {
+		return 0, errors.New("tab cache unavailable")
+	}
+	if base == nil {
+		return 0, errors.New("cdp context unavailable")
+	}
+	if desired <= 0 {
+		return 0, nil
+	}
+	idle, err := s.IdleCount()
+	if err != nil {
+		return 0, err
+	}
+	missing := desired - idle
+	if missing <= 0 {
+		return 0, nil
+	}
+	created := 0
+	for i := 0; i < missing; i++ {
+		if ctx != nil {
+			select {
+			case <-ctx.Done():
+				return created, ctx.Err()
+			default:
+			}
+		}
+		targetID, err := launchReusableTab(base)
+		if err != nil {
+			return created, fmt.Errorf("warm tab %d: %w", i+1, err)
+		}
+		if err := s.Checkin(targetID); err != nil {
+			return created, fmt.Errorf("cache warm tab: %w", err)
+		}
+		created++
+	}
+	return created, nil
+}
+
+func (s *targetStore) GC(ctx context.Context, base context.Context, force bool) (int, bool, error) {
+	if s == nil || base == nil {
+		return 0, false, nil
+	}
+	s.mu.Lock()
+	if s.gcInterval <= 0 {
+		s.gcInterval = time.Minute
+	}
+	if !force && !s.lastGC.IsZero() && time.Since(s.lastGC) < s.gcInterval {
+		s.mu.Unlock()
+		return 0, false, nil
+	}
+	s.lastGC = time.Now()
+	if err := s.lock.Lock(); err != nil {
+		s.mu.Unlock()
+		return 0, false, fmt.Errorf("acquire tab lock: %w", err)
+	}
+	defer func() {
+		s.lock.Unlock()
+		s.mu.Unlock()
+	}()
+	state, err := s.read()
+	if err != nil {
+		return 0, true, err
+	}
+	removed := 0
+	valid := make([]string, 0, len(state.Idle))
+	for _, id := range state.Idle {
+		if ctx != nil {
+			select {
+			case <-ctx.Done():
+				return removed, true, ctx.Err()
+			default:
+			}
+		}
+		tabCtx, cancel := chromedp.NewContext(base, chromedp.WithTargetID(target.ID(id)))
+		if err := chromedp.Run(tabCtx); err != nil {
+			removed++
+			cancel()
+			slog.Debug("tab gc drop target", slog.String("target", id), slog.Any("err", err))
+			continue
+		}
+		detachTargetSession(tabCtx)
+		cancel()
+		valid = append(valid, id)
+	}
+	if removed == 0 {
+		return 0, true, nil
+	}
+	state.Idle = valid
+	state.compact()
+	if err := s.write(state); err != nil {
+		return removed, true, err
+	}
+	return removed, true, nil
 }
 
 func (s *targetStore) Checkout() (string, error) {
@@ -173,4 +294,27 @@ func sanitizeKey(key string) string {
 		return key[:40]
 	}
 	return key
+}
+
+func launchReusableTab(base context.Context) (string, error) {
+	ctx, cancel := chromedp.NewContext(base)
+	if err := chromedp.Run(ctx); err != nil {
+		cancel()
+		return "", fmt.Errorf("new tab: %w", err)
+	}
+	chromedpCtx := chromedp.FromContext(ctx)
+	if chromedpCtx == nil || chromedpCtx.Target == nil {
+		detachTargetSession(ctx)
+		cancel()
+		return "", errors.New("missing target metadata")
+	}
+	id := chromedpCtx.Target.TargetID
+	if id == "" {
+		detachTargetSession(ctx)
+		cancel()
+		return "", errors.New("empty target id")
+	}
+	detachTargetSession(ctx)
+	cancel()
+	return string(id), nil
 }
