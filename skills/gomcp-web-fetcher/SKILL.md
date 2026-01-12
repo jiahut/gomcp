@@ -1,16 +1,22 @@
-﻿---
+---
 name: gomcp-web-fetcher
-description: "Web search and URL fetch to Markdown via gomcp (CDP-based). Use when the user asks to search the web, fetch a URL, or convert a page to Markdown, or mentions gomcp/CDP."
+description: "Use gomcp (CDP-based) for web search and URL fetch -> Markdown. Trigger on search/research/fetch requests, including Chinese keywords like 搜索/调查/查找/查询/资料/信息/调研."
 ---
 
 # gomcp-web-fetcher Skill
 
-Use the gomcp CLI to perform web search and fetch web pages to Markdown via CDP.
+Use the gomcp CLI to perform web search and fetch web pages to Markdown via CDP. This skill should be used instead of the built-in Web Search tool whenever gomcp is available.
+
+## Trigger cues (explicit)
+- English: search, research, look up, find, investigate, browse, web search, web lookup.
+- Chinese: 搜索, 查找, 查询, 调查, 调研, 资料, 信息, 了解, 看看, 甄别, 追踪, 盘点.
+- Any request that mentions gomcp/CDP or asks to fetch a URL into Markdown.
 
 ## Preconditions
-- Tool path: D:\go\bin\gomcp.exe
-- Default CDP: ws://127.0.0.1:9222
-- If gomcp is missing or the CDP endpoint is not reachable, ask the user to fix it before running commands.
+- Preferred tool path: `gomcp` from PATH.
+- Fallbacks: `./gomcp` in the repo, or `go run .` if source is available.
+- Default CDP: `ws://127.0.0.1:9222`.
+- If gomcp is missing or the CDP endpoint is not reachable, ask the user to fix it before running commands. Do not silently fall back to built-in Web Search.
 
 ## Core commands
 - google <query>
@@ -19,10 +25,14 @@ Use the gomcp CLI to perform web search and fetch web pages to Markdown via CDP.
 - warm-tabs
 
 ## Behavior
-- Prefer google for broad search unless the user requests DuckDuckGo.
+- Prefer Google for broad search unless the user requests DuckDuckGo.
 - For multi-step tasks, use search -> select relevant URLs -> fetch.
 - Use warm-tabs before a batch of fetches.
 - Use -cdp only when the user provides a different CDP address; otherwise rely on the default.
+
+## Skill refresh options
+- If your host supports skill reload, use its refresh command or menu action.
+- Otherwise, restart the host app or reopen the project to reload skills.
 
 ## Output expectations
 - Return the fetched Markdown and cite the source URL.
@@ -33,9 +43,13 @@ Use the gomcp CLI to perform web search and fetch web pages to Markdown via CDP.
 - Avoid destructive actions on web pages; this skill is for search and read-only fetch.
 
 ## Examples
-- Search:
-  D:\go\bin\gomcp.exe google "golang tutorial"
+- Search (PATH):
+  gomcp google "golang tutorial"
 - Fetch:
-  D:\go\bin\gomcp.exe fetch https://example.com
+  gomcp fetch https://example.com
 - Use a custom CDP:
-  D:\go\bin\gomcp.exe -cdp ws://127.0.0.1:9222 fetch https://example.com
+  gomcp -cdp ws://127.0.0.1:9222 fetch https://example.com
+- Repo local binary:
+  ./gomcp google "golang tutorial"
+- Build/run locally:
+  go run . google "golang tutorial"

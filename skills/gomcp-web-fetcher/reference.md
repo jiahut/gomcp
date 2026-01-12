@@ -1,4 +1,4 @@
-﻿# gomcp Reference
+# gomcp Reference
 
 ## Overview
 gomcp is a CDP-based CLI for web search and fetch. It can search and fetch pages and convert them to Markdown.
@@ -16,5 +16,6 @@ gomcp is a CDP-based CLI for web search and fetch. It can search and fetch pages
 - -verbose : enable debug logs
 
 ## Examples
-- D:\go\bin\gomcp.exe fetch https://example.com
-- D:\go\bin\gomcp.exe google "golang tutorial"
+- gomcp fetch https://example.com
+- gomcp google "golang tutorial"
+- ./gomcp duckduckgo "golang tutorial"
