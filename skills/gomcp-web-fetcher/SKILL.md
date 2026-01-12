@@ -24,6 +24,9 @@ Use the gomcp CLI to perform web search and fetch web pages to Markdown via CDP.
 - fetch <url>
 - warm-tabs
 
+## References
+- Use `references/reference.md` for a concise command/option lookup when needed.
+
 ## Behavior
 - Use gomcp for all search/fetch tasks when this skill is enabled. Do not call built-in Web Search, mcp-google-cse, or other web tools unless gomcp is unavailable and the user explicitly approves a fallback.
 - Prefer Google for broad search unless the user requests DuckDuckGo.
