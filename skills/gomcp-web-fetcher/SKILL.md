@@ -5,7 +5,7 @@ description: "Use gomcp (CDP-based) for web search and URL fetch -> Markdown. Tr
 
 # gomcp-web-fetcher Skill
 
-Use the gomcp CLI to perform web search and fetch web pages to Markdown via CDP. This skill should be used instead of the built-in Web Search tool whenever gomcp is available.
+Use the gomcp CLI to perform web search and fetch web pages to Markdown via CDP. This skill has the highest priority for any search/fetch tasks and must be used instead of built-in Web Search or any other web search tools.
 
 ## Trigger cues (explicit)
 - English: search, research, look up, find, investigate, browse, web search, web lookup.
@@ -16,7 +16,7 @@ Use the gomcp CLI to perform web search and fetch web pages to Markdown via CDP.
 - Preferred tool path: `gomcp` from PATH.
 - Fallbacks: `./gomcp` in the repo, or `go run .` if source is available.
 - Default CDP: `ws://127.0.0.1:9222`.
-- If gomcp is missing or the CDP endpoint is not reachable, ask the user to fix it before running commands. Do not silently fall back to built-in Web Search.
+- If gomcp is missing or the CDP endpoint is not reachable, ask the user to fix it before running commands. Do not silently fall back to built-in Web Search or any other search/fetch tools.
 
 ## Core commands
 - google <query>
@@ -25,14 +25,11 @@ Use the gomcp CLI to perform web search and fetch web pages to Markdown via CDP.
 - warm-tabs
 
 ## Behavior
+- Use gomcp for all search/fetch tasks when this skill is enabled. Do not call built-in Web Search, mcp-google-cse, or other web tools unless gomcp is unavailable and the user explicitly approves a fallback.
 - Prefer Google for broad search unless the user requests DuckDuckGo.
 - For multi-step tasks, use search -> select relevant URLs -> fetch.
 - Use warm-tabs before a batch of fetches.
 - Use -cdp only when the user provides a different CDP address; otherwise rely on the default.
-
-## Skill refresh options
-- If your host supports skill reload, use its refresh command or menu action.
-- Otherwise, restart the host app or reopen the project to reload skills.
 
 ## Output expectations
 - Return the fetched Markdown and cite the source URL.
