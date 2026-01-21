@@ -297,6 +297,12 @@ func sanitizeKey(key string) string {
 }
 
 func launchReusableTab(base context.Context) (string, error) {
+	if id, err := createBackgroundTarget(base); err == nil && id != "" {
+		return string(id), nil
+	} else if err != nil {
+		slog.Debug("create background tab failed, falling back", slog.Any("err", err))
+	}
+
 	ctx, cancel := chromedp.NewContext(base)
 	if err := chromedp.Run(ctx); err != nil {
 		cancel()

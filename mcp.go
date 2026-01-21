@@ -101,6 +101,20 @@ func (c *MCPConn) connect() error {
 		}
 	}
 
+	if id, err := createBackgroundTarget(c.srv.cdpctx); err == nil && id != "" {
+		ctx, cancel := chromedp.NewContext(c.srv.cdpctx, chromedp.WithTargetID(id))
+		if err := chromedp.Run(ctx); err == nil {
+			c.cdpctx = ctx
+			c.cdpcancel = cancel
+			c.targetID = id
+			return nil
+		}
+		cancel()
+		slog.Warn("attach background tab failed", slog.Any("err", err))
+	} else if err != nil {
+		slog.Debug("create background tab failed, falling back", slog.Any("err", err))
+	}
+
 	ctx, cancel := chromedp.NewContext(c.srv.cdpctx)
 
 	// ensure we have a tab to reuse across tool invocations
