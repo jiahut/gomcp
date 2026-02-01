@@ -26,22 +26,15 @@ Use the gomcp CLI to perform web search and fetch web pages to Markdown via CDP.
 ## CDP connection recovery
 
 If you see error `dial tcp 127.0.0.1:9222 (default cdp) connection refused`:
-1. Run `gomcpman update-browser` to refresh the default CDP instance
+1. Run `gomcpman update-browser` to refresh the default CDP instance (or `gomcpman reset-browser` to force recreate)
 2. Retry the failed command
 
 ## gomcpman management commands
 
-Use `gomcpman` script to manage the service and browser:
+Use `gomcpman` script to manage the browser container:
 
-**Service management:**
-- `gomcpman status` - Check service status
-- `gomcpman start` / `gomcpman stop` / `gomcpman restart` - Control service
-- `gomcpman logs` - View real-time logs
-
-**Browser container:**
-- `gomcpman update-browser` - Pull latest browser image and recreate container
-- `gomcpman browser-status` - Check browser container status
-- `gomcpman browser-logs` - View browser logs
+- `gomcpman update-browser` - Pull latest image (recreate only when updated)
+- `gomcpman reset-browser` - Force recreate browser container
 
 ## References
 
@@ -87,5 +80,6 @@ gomcp fetch https://site2.com
 **CDP troubleshooting:**
 ```bash
 gomcpman update-browser  # Fix connection refused errors
+gomcpman reset-browser   # Force recreate browser container
 gomcpman status          # Check service health
 ```

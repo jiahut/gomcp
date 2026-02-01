@@ -16,6 +16,7 @@ gomcp 管理脚本
 
 浏览器容器管理命令:
   update-browser   拉取最新镜像（仅在镜像更新时重新创建容器）
+  reset-browser    强制重建浏览器容器（无论镜像是否更新）
   browser-status   查看浏览器容器状态
   browser-logs     查看浏览器容器日志 (按 Ctrl+C 退出)
 
@@ -28,4 +29,5 @@ gomcp 管理脚本
   /home/zhijia/.local/bin/gomcpman restart        # 重启服务
   /home/zhijia/.local/bin/gomcpman enable         # 启用开机自启
   /home/zhijia/.local/bin/gomcpman update-browser # 更新浏览器容器
+  /home/zhijia/.local/bin/gomcpman reset-browser  # 强制重建浏览器容器
 
