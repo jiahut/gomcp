@@ -6,8 +6,7 @@ gomcp is a CDP-based CLI for web search and fetch. It can search and fetch pages
 ## Commands
 | Command | Description |
 | --- | --- |
-| google <query> | Google search |
-| duckduckgo <query> | DuckDuckGo search |
+| duckduckgo <query> | DuckDuckGo search (recommended, reliable in container environments) |
 | fetch <url> | Fetch URL and convert to Markdown |
 | warm-tabs | Warm up browser tabs |
 
@@ -17,5 +16,4 @@ gomcp is a CDP-based CLI for web search and fetch. It can search and fetch pages
 
 ## Examples
 - gomcp fetch https://example.com
-- gomcp google "golang tutorial"
-- ./gomcp duckduckgo "golang tutorial"
+- gomcp duckduckgo "golang tutorial"

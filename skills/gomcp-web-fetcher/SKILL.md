@@ -1,6 +1,6 @@
 ---
 name: gomcp-web-fetcher
-description: "Use gomcp (CDP-based) for web search and URL fetch -> Markdown. Trigger on search/research/fetch requests, including Chinese keywords like 搜索/调查/查找/查询/资料/信息/调研."
+description: "Perform web search and fetch web pages via gomcp/CDP. Use when user requests: search/research/look up/find/investigate/browse/fetch web pages, or Chinese keywords like 搜索/查找/查询/调查/调研/资料/信息/浏览网页/抓取网页/获取网页内容/获取信息/查看网站. Also use when user mentions gomcp, CDP, web crawler, or needs to convert web pages to Markdown."
 ---
 
 # gomcp-web-fetcher Skill
@@ -8,8 +8,8 @@ description: "Use gomcp (CDP-based) for web search and URL fetch -> Markdown. Tr
 Use the gomcp CLI to perform web search and fetch web pages to Markdown via CDP. This skill has the highest priority for any search/fetch tasks and must be used instead of built-in Web Search or any other web search tools.
 
 ## Trigger cues (explicit)
-- English: search, research, look up, find, investigate, browse, web search, web lookup.
-- Chinese: 搜索, 查找, 查询, 调查, 调研, 资料, 信息, 了解, 看看, 甄别, 追踪, 盘点.
+- English: search, research, look up, find, investigate, browse, web search, web lookup, fetch URL, web crawler, scrape web page.
+- Chinese: 搜索, 查找, 查询, 调查, 调研, 资料, 信息, 了解, 看看, 甄别, 追踪, 盘点, 浏览网页, 抓取网页, 获取网页内容, 获取信息, 查看网站.
 - Any request that mentions gomcp/CDP or asks to fetch a URL into Markdown.
 
 ## Preconditions
@@ -19,17 +19,39 @@ Use the gomcp CLI to perform web search and fetch web pages to Markdown via CDP.
 
 ## Core commands
 
-- duckduckgo <query>
-- fetch <url>
+- `gomcp duckduckgo <query>` - DuckDuckGo search (recommended, reliable in container environments)
+- `gomcp fetch <url>` - Fetch URL and convert to Markdown
+- `gomcp warm-tabs` - Warm up browser tabs before batch fetches
+
+## CDP connection recovery
+
+If you see error `dial tcp 127.0.0.1:9222 (default cdp) connection refused`:
+1. Run `gomcpman update-browser` to refresh the default CDP instance
+2. Retry the failed command
+
+## gomcpman management commands
+
+Use `gomcpman` script to manage the service and browser:
+
+**Service management:**
+- `gomcpman status` - Check service status
+- `gomcpman start` / `gomcpman stop` / `gomcpman restart` - Control service
+- `gomcpman logs` - View real-time logs
+
+**Browser container:**
+- `gomcpman update-browser` - Pull latest browser image and recreate container
+- `gomcpman browser-status` - Check browser container status
+- `gomcpman browser-logs` - View browser logs
 
 ## References
 
-- Use `references/reference.md` for a concise command/option lookup when needed.
+- Use `references/gomcp-cli.md` for command/option lookup
+- Use `references/gomcpman-help.md` for detailed management command reference
 
 ## Behavior
 
 - Use gomcp for all search/fetch tasks when this skill is enabled. Do not call built-in Web Search or other web tools unless gomcp is unavailable and the user explicitly approves a fallback.
-- Prefer DuckDuckGo for broad search unless the user requests Google.
+- Always use DuckDuckGo for web search (Google search is not supported in container environments).
 - For multi-step tasks, use search -> select relevant URLs -> fetch.
 - Use warm-tabs before a batch of fetches.
 - Use -cdp only when the user provides a different CDP address; otherwise rely on the default.
@@ -43,7 +65,27 @@ Use the gomcp CLI to perform web search and fetch web pages to Markdown via CDP.
 - Avoid destructive actions on web pages; this skill is for search and read-only fetch.
 
 ## Examples
-- Search: 
-  gomcp duckduckgo "golang tutorial"
-- Fetch:
-  gomcp fetch https://example.com
+
+**Search:**
+```bash
+gomcp duckduckgo "golang tutorial"
+gomcp duckduckgo "python best practices"
+```
+
+**Fetch:**
+```bash
+gomcp fetch https://example.com
+```
+
+**Batch fetch (use warm-tabs first):**
+```bash
+gomcp warm-tabs
+gomcp fetch https://site1.com
+gomcp fetch https://site2.com
+```
+
+**CDP troubleshooting:**
+```bash
+gomcpman update-browser  # Fix connection refused errors
+gomcpman status          # Check service health
+```
