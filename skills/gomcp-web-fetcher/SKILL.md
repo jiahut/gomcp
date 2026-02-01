@@ -14,22 +14,22 @@ Use the gomcp CLI to perform web search and fetch web pages to Markdown via CDP.
 
 ## Preconditions
 - Preferred tool path: `gomcp` from PATH.
-- Fallbacks: `./gomcp` in the repo, or `go run .` if source is available.
 - Default CDP: `ws://127.0.0.1:9222`.
 - If gomcp is missing or the CDP endpoint is not reachable, ask the user to fix it before running commands. Do not silently fall back to built-in Web Search or any other search/fetch tools.
 
 ## Core commands
-- google <query>
+
 - duckduckgo <query>
 - fetch <url>
-- warm-tabs
 
 ## References
+
 - Use `references/reference.md` for a concise command/option lookup when needed.
 
 ## Behavior
-- Use gomcp for all search/fetch tasks when this skill is enabled. Do not call built-in Web Search, mcp-google-cse, or other web tools unless gomcp is unavailable and the user explicitly approves a fallback.
-- Prefer Google for broad search unless the user requests DuckDuckGo.
+
+- Use gomcp for all search/fetch tasks when this skill is enabled. Do not call built-in Web Search or other web tools unless gomcp is unavailable and the user explicitly approves a fallback.
+- Prefer DuckDuckGo for broad search unless the user requests Google.
 - For multi-step tasks, use search -> select relevant URLs -> fetch.
 - Use warm-tabs before a batch of fetches.
 - Use -cdp only when the user provides a different CDP address; otherwise rely on the default.
@@ -43,13 +43,7 @@ Use the gomcp CLI to perform web search and fetch web pages to Markdown via CDP.
 - Avoid destructive actions on web pages; this skill is for search and read-only fetch.
 
 ## Examples
-- Search (PATH):
-  gomcp google "golang tutorial"
+- Search: 
+  gomcp duckduckgo "golang tutorial"
 - Fetch:
   gomcp fetch https://example.com
-- Use a custom CDP:
-  gomcp -cdp ws://127.0.0.1:9222 fetch https://example.com
-- Repo local binary:
-  ./gomcp google "golang tutorial"
-- Build/run locally:
-  go run . google "golang tutorial"
