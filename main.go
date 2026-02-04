@@ -69,9 +69,8 @@ func run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.
 	// usage func declaration.
 	exec := args[0]
 	flags.Usage = func() {
-		fmt.Fprintf(stderr, "usage: %s google|duckduckgo|fetch|warm-tabs [args]\n", exec)
+		fmt.Fprintf(stderr, "usage: %s duckduckgo|fetch|warm-tabs [args]\n", exec)
 		fmt.Fprintf(stderr, "\nCommands:\n")
-		fmt.Fprintf(stderr, "\tgoogle\t\tsearch using google\n")
 		fmt.Fprintf(stderr, "\tduckduckgo\tsearch using duckduckgo\n")
 		fmt.Fprintf(stderr, "\tfetch\t\tfetch URL and return markdown content\n")
 		fmt.Fprintf(stderr, "\twarm-tabs\tprewarm reusable browser tabs\n")
@@ -164,8 +163,6 @@ func run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.
 	}
 
 	switch cmd {
-	case "google":
-		return runGoogle(ctx, args[1:], mcpsrv, stderr)
 	case "duckduckgo":
 		return runDuckDuckGo(ctx, args[1:], mcpsrv, stderr)
 	case "fetch":
@@ -297,95 +294,6 @@ Example:
 	return nil
 }
 
-// runSearch performs a web search via Google and returns the results
-func runGoogle(ctx context.Context, args []string, mcpsrv *MCPServer, stderr io.Writer) error {
-	if len(args) == 0 {
-		return errors.New(`search query is required
-
-Usage:
-  gomcp google <query>
-
-Description:
-  Perform a web search using Google and return a list of results including titles, links, and snippets.
-
-Example:
-  gomcp google "Go programming language"
-  gomcp google "人工智能最新进展"
-  gomcp google "golang tutorial beginner"`)
-	}
-
-	// Join all arguments to form the search query (allows spaces in search terms)
-	query := strings.Join(args, " ")
-
-	conn := mcpsrv.NewConn()
-	defer conn.Close()
-
-	// Perform search using Google
-	searchURL := "https://www.google.com/search?hl=en&q=" + url.QueryEscape(query)
-	if _, err := conn.Goto(searchURL); err != nil {
-		return fmt.Errorf("search failed: %w", err)
-	}
-
-	slog.Info("Searching for", slog.String("query", query))
-
-	// Wait for results to load
-	chromedp.Run(conn.cdpctx, chromedp.Sleep(2*time.Second))
-
-	// Extract search results
-	var results []SearchResult
-	err := chromedp.Run(conn.cdpctx,
-		chromedp.Evaluate(`(() => {
-			const blocks = Array.from(document.querySelectorAll('#search .g, #search .Gx5Zad, #search .MjjYud, #search .kvH3mc, #search .P8uan8'));
-			const results = [];
-
-			for (const block of blocks) {
-				const titleNode = block.querySelector('h3');
-				const linkNode = titleNode ? titleNode.closest('a[href]') || block.querySelector('a[href]') : block.querySelector('a[href]');
-				if (!titleNode || !linkNode) {
-					continue;
-				}
-
-				const href = linkNode.href || '';
-				const title = titleNode.textContent?.trim() || '';
-				if (!href || !title || href.startsWith('javascript:') || href.startsWith('/')) {
-					continue;
-				}
-
-				const snippetNode = block.querySelector('.VwiC3b, .aCOpRe, .MUxGbd, .lyLwlc, .NJo7tc span, div[data-sncf="1"] span');
-				const snippet = snippetNode ? (snippetNode.textContent?.trim() || '') : '';
-
-				results.push({ title, link: href, snippet });
-			}
-
-			return results
-				.filter((item) => item.title && item.link)
-				.slice(0, 10);
-		})()`, &results),
-	)
-
-	if err != nil {
-		return fmt.Errorf("extract results: %w", err)
-	}
-
-	if len(results) == 0 {
-		fmt.Fprintf(stderr, "No results found for query: %s\n", query)
-		return nil
-	}
-
-	// Print results
-	fmt.Printf("Search results for: %s\n\n", query)
-	for i, result := range results {
-		fmt.Printf("%d. %s\n", i+1, result.Title)
-		fmt.Printf("   Link: %s\n", result.Link)
-		if result.Snippet != "" {
-			fmt.Printf("   Snippet: %s\n", result.Snippet)
-		}
-		fmt.Println()
-	}
-
-	return nil
-}
-
 // runFetch fetches a URL and returns its markdown content
 func runFetch(ctx context.Context, args []string, mcpsrv *MCPServer, stderr io.Writer) error {
 	if len(args) == 0 {
@@ -489,7 +397,7 @@ func runWarmTabs(ctx context.Context, opts warmTabsOptions, mcpsrv *MCPServer, s
 
 func shouldRunGC(cmd string) bool {
 	switch cmd {
-	case "google", "duckduckgo", "fetch", "warm-tabs":
+	case "duckduckgo", "fetch", "warm-tabs":
 		return true
 	default:
 		return false
