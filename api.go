@@ -104,9 +104,8 @@ func handleSSE(_ context.Context, sessions *Sessions, srv *MCPServer) http.Handl
 		slog.Debug("connect sse", slog.Any("id", s.id))
 		defer slog.Debug("disconnect sse", slog.Any("id", s.id))
 
-		// create the mcpconn
-		mcpconn := srv.NewConn()
-		defer mcpconn.Close()
+		executor := newSessionExecutor(srv)
+		defer executor.Close()
 
 		f, ok := w.(http.Flusher)
 		if !ok {
@@ -136,7 +135,7 @@ func handleSSE(_ context.Context, sessions *Sessions, srv *MCPServer) http.Handl
 					// closed channel
 					return
 				}
-				if err := srv.Handle(ctx, rreq, mcpconn, send); err != nil {
+				if err := executor.Handle(ctx, rreq, send); err != nil {
 					// disconnect on error
 					slog.Error("handle req", slog.Any("err", err))
 					return

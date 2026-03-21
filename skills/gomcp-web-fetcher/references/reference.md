@@ -9,7 +9,6 @@ gomcp is a CDP-based CLI for web search and fetch. It can search and fetch pages
 | google <query> | Google search |
 | duckduckgo <query> | DuckDuckGo search |
 | fetch <url> | Fetch URL and convert to Markdown |
-| warm-tabs | Warm up browser tabs |
 
 ## Options
 - -cdp <string> : CDP address (default ws://127.0.0.1:9222)

@@ -15,13 +15,15 @@
 | `google <query>` | Google 搜索 |
 | `duckduckgo <query>` | DuckDuckGo 搜索 |
 | `fetch <url>` | 抓取 URL → Markdown |
-| `warm-tabs` | 预热浏览器标签 |
 
 ## 选项
 ```
 -cdp string   CDP 地址 (默认 ws://127.0.0.1:9222)
 -verbose      启用调试日志
 ```
+
+## Tab 池
+`gomcp` 会在内部自动维护可复用的后台标签页和回收策略, 无需手动预热。
 
 ## 示例
 ```bash

@@ -70,6 +70,36 @@ func createBackgroundTarget(base context.Context) (target.ID, error) {
 	return id, nil
 }
 
+func resetTabForReuse(ctx context.Context) error {
+	if ctx == nil {
+		return errors.New("nil target context")
+	}
+	resetCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	return chromedp.Run(resetCtx, chromedp.Navigate("about:blank"))
+}
+
+func closeTarget(base context.Context, id target.ID) error {
+	if base == nil {
+		return errors.New("nil cdp context")
+	}
+	if id == "" {
+		return errors.New("empty target id")
+	}
+
+	ctx, cancel := chromedp.NewContext(base)
+	defer cancel()
+	chromedpCtx, err := ensureBrowser(ctx)
+	if err != nil {
+		return err
+	}
+	exec := cdp.WithExecutor(ctx, chromedpCtx.Browser)
+	if err := target.CloseTarget(id).Do(exec); err != nil {
+		return fmt.Errorf("close target %s: %w", id, err)
+	}
+	return nil
+}
+
 // validateCDPAllocator ensures the allocator context can still open a tab.
 func validateCDPAllocator(ctx context.Context) error {
 	if ctx == nil {

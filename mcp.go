@@ -43,9 +43,20 @@ type MCPConn struct {
 }
 
 func (c *MCPConn) Close() {
+	keepAlive := false
+	parkedAt := time.Now()
+
 	if c.cdpctx != nil {
+		if c.srv.targets != nil && c.targetID != "" {
+			if err := resetTabForReuse(c.cdpctx); err != nil {
+				slog.Warn("reset tab for reuse", slog.String("target", string(c.targetID)), slog.Any("err", err))
+			} else {
+				keepAlive = true
+			}
+		}
+
 		if chromedpCtx := chromedp.FromContext(c.cdpctx); chromedpCtx != nil && chromedpCtx.Target != nil {
-			if chromedpCtx.Target.SessionID != "" {
+			if keepAlive && chromedpCtx.Target.SessionID != "" {
 				detachCtx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 				defer cancel()
 				exec := cdp.WithExecutor(detachCtx, chromedpCtx.Browser)
@@ -53,8 +64,10 @@ func (c *MCPConn) Close() {
 					slog.Debug("detach target", slog.String("target", string(chromedpCtx.Target.TargetID)), slog.Any("err", err))
 				}
 			}
-			// Prevent the cancellation path from calling CloseTarget so the tab stays alive.
-			chromedpCtx.Target = nil
+			if keepAlive {
+				// Prevent the cancellation path from calling CloseTarget so the tab stays alive.
+				chromedpCtx.Target = nil
+			}
 		}
 
 		if c.cdpcancel != nil {
@@ -65,12 +78,12 @@ func (c *MCPConn) Close() {
 		c.cdpcancel = nil
 	}
 
-	if c.srv.targets != nil && c.targetID != "" {
-		if err := c.srv.targets.Checkin(string(c.targetID)); err != nil {
+	if keepAlive && c.srv.targets != nil && c.targetID != "" {
+		if err := c.srv.targets.Checkin(newIdleTarget(string(c.targetID), parkedAt)); err != nil {
 			slog.Warn("return tab to pool", slog.Any("err", err))
 		}
-		c.targetID = ""
 	}
+	c.targetID = ""
 }
 
 func (c *MCPConn) connect() error {
@@ -80,24 +93,27 @@ func (c *MCPConn) connect() error {
 
 	if c.srv.targets != nil {
 		for {
-			cached, err := c.srv.targets.Checkout()
+			cached, remaining, err := c.srv.targets.Checkout()
 			if err != nil {
 				slog.Warn("checkout tab", slog.Any("err", err))
 				break
 			}
-			if cached == "" {
+			if cached.ID == "" {
 				break
 			}
 
-			ctx, cancel := chromedp.NewContext(c.srv.cdpctx, chromedp.WithTargetID(target.ID(cached)))
+			ctx, cancel := chromedp.NewContext(c.srv.cdpctx, chromedp.WithTargetID(target.ID(cached.ID)))
 			if err := chromedp.Run(ctx); err == nil {
 				c.cdpctx = ctx
 				c.cdpcancel = cancel
-				c.targetID = target.ID(cached)
+				c.targetID = target.ID(cached.ID)
+				if remaining < c.srv.targets.MinIdle() {
+					c.srv.targets.ScheduleEnsureIdle(c.srv.cdpctx, c.srv.targets.MinIdle())
+				}
 				return nil
 			}
 			cancel()
-			slog.Warn("attach stored tab failed", slog.String("target", cached))
+			slog.Warn("attach stored tab failed", slog.String("target", cached.ID))
 		}
 	}
 
@@ -107,6 +123,9 @@ func (c *MCPConn) connect() error {
 			c.cdpctx = ctx
 			c.cdpcancel = cancel
 			c.targetID = id
+			if c.srv.targets != nil {
+				c.srv.targets.ScheduleEnsureIdle(c.srv.cdpctx, c.srv.targets.BurstIdle())
+			}
 			return nil
 		}
 		cancel()
@@ -128,6 +147,9 @@ func (c *MCPConn) connect() error {
 
 	if chromedpCtx := chromedp.FromContext(ctx); chromedpCtx != nil && chromedpCtx.Target != nil {
 		c.targetID = chromedpCtx.Target.TargetID
+	}
+	if c.srv.targets != nil {
+		c.srv.targets.ScheduleEnsureIdle(c.srv.cdpctx, c.srv.targets.BurstIdle())
 	}
 
 	return nil
@@ -360,6 +382,42 @@ func (s *MCPServer) Decode(in io.Reader) (mcp.Request, error) {
 
 type SendFn func(string, any) error
 
+type toolExecutionMode int
+
+const (
+	toolExecutionStateful toolExecutionMode = iota
+	toolExecutionStateless
+)
+
+func (s *MCPServer) toolMode(name string) toolExecutionMode {
+	switch name {
+	case "over":
+		return toolExecutionStateless
+	default:
+		return toolExecutionStateful
+	}
+}
+
+func (s *MCPServer) sendToolResult(send SendFn, id int, res string, err error) error {
+	if err != nil {
+		slog.Error("call tool", slog.Any("err", err), slog.Int("id", id))
+		return send("message", rpc.NewResponse(mcp.ToolsCallResponse{
+			IsError: true,
+			Content: []mcp.ToolsCallContent{{
+				Type: "text",
+				Text: err.Error(),
+			}},
+		}, id))
+	}
+
+	return send("message", rpc.NewResponse(mcp.ToolsCallResponse{
+		Content: []mcp.ToolsCallContent{{
+			Type: "text",
+			Text: res,
+		}},
+	}, id))
+}
+
 func (s *MCPServer) Handle(
 	ctx context.Context,
 	rreq mcp.Request,
@@ -387,27 +445,8 @@ func (s *MCPServer) Handle(
 		}, r.Id))
 	case mcp.ToolsCallRequest:
 		slog.Debug("call tool", slog.String("name", r.Params.Name), slog.Int("id", r.Id))
-		go func() {
-			res, err := s.CallTool(ctx, mcpconn, r)
-
-			if err != nil {
-				slog.Error("call tool", slog.String("name", r.Params.Name), slog.Any("err", err))
-				senderr = send("message", rpc.NewResponse(mcp.ToolsCallResponse{
-					IsError: true,
-					Content: []mcp.ToolsCallContent{{
-						Type: "text",
-						Text: err.Error(),
-					}},
-				}, r.Id))
-			}
-
-			senderr = send("message", rpc.NewResponse(mcp.ToolsCallResponse{
-				Content: []mcp.ToolsCallContent{{
-					Type: "text",
-					Text: res,
-				}},
-			}, r.Id))
-		}()
+		res, err := s.CallTool(ctx, mcpconn, r)
+		senderr = s.sendToolResult(send, r.Id, res, err)
 
 	case mcp.NotificationsCancelledRequest:
 		slog.Debug("cancelled",

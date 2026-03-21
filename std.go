@@ -36,9 +36,8 @@ func runstd(ctx context.Context, in io.Reader, out io.Writer, mcpsrv *MCPServer)
 
 	enc := json.NewEncoder(out)
 
-	// create the mcpconn
-	mcpconn := mcpsrv.NewConn()
-	defer mcpconn.Close()
+	executor := newSessionExecutor(mcpsrv)
+	defer executor.Close()
 
 	go func() {
 		send := func(event string, data any) error {
@@ -57,7 +56,7 @@ func runstd(ctx context.Context, in io.Reader, out io.Writer, mcpsrv *MCPServer)
 					// closed channel
 					return
 				}
-				if err := mcpsrv.Handle(ctx, rreq, mcpconn, send); err != nil {
+				if err := executor.Handle(ctx, rreq, send); err != nil {
 					// disconnect on error
 					slog.Error("handle req", slog.Any("err", err))
 					return
