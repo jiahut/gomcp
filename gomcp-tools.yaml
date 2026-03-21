@@ -1,0 +1,45 @@
+mcp:
+  description: |
+    Browser-based web search and content fetching tools. Uses a local CDP browser
+    session via gomcp to perform searches and fetch web content.
+  run:
+    shell: /bin/sh
+  
+  tools:
+    - name: "google_search"
+      description: "Search the web using Google via local browser"
+      params:
+        query:
+          type: string
+          description: "Search query string"
+          required: true
+      constraints:
+        - "query.size() > 0 && query.size() <= 200"
+        - "!query.contains(\"'\")"
+        - "!query.matches('.*[\\n\\r`$;&|<>].*')"
+      run:
+        timeout: "30s"
+        command: |
+          gomcp google '{{ .query }}'
+      output:
+        prefix: "Google Search Results:"
+
+    - name: "fetch_url"
+      description: "Fetch a URL and return the content as simplified Markdown"
+      params:
+        url:
+          type: string
+          description: "The URL to fetch"
+          required: true
+      constraints:
+        - "url.startsWith('http://') || url.startsWith('https://')"
+        - "url.size() <= 2048"
+        - "!url.contains(' ')"
+        - "!url.contains(\"'\")"
+        - "!url.matches('.*[\\n\\r`$;|<>].*')"
+      run:
+        timeout: "45s"
+        command: |
+          gomcp fetch '{{ .url }}'
+      output:
+        prefix: "Fetched Content:"

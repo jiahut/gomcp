@@ -1,0 +1,58 @@
+mcp:
+  description: |
+    Browser-based web search and content fetching tools for Windows. Uses a local
+    CDP browser session via gomcp to perform searches and fetch web content.
+    Requires powershell.exe and gomcp.exe to be available on PATH.
+  run:
+    shell: powershell.exe
+
+  tools:
+    - name: "google_search"
+      description: "Search the web using Google via local browser on Windows"
+      params:
+        query:
+          type: string
+          description: "Search query string"
+          required: true
+      constraints:
+        - "query.size() > 0 && query.size() <= 200"
+        - "!query.matches('.*[\\n\\r].*')"
+      run:
+        timeout: "30s"
+        command: |
+          gomcp.exe google '{{ .query | replace "'" "''" }}'
+        runners:
+          - name: exec
+            requirements:
+              os: windows
+              executables:
+                - powershell.exe
+                - gomcp.exe
+      output:
+        prefix: "Google Search Results:"
+
+    - name: "fetch_url"
+      description: "Fetch a URL and return the content as simplified Markdown on Windows"
+      params:
+        url:
+          type: string
+          description: "The URL to fetch"
+          required: true
+      constraints:
+        - "url.startsWith('http://') || url.startsWith('https://')"
+        - "url.size() <= 2048"
+        - "!url.contains(' ')"
+        - "!url.matches('.*[\\n\\r].*')"
+      run:
+        timeout: "45s"
+        command: |
+          gomcp.exe fetch '{{ .url | replace "'" "''" }}'
+        runners:
+          - name: exec
+            requirements:
+              os: windows
+              executables:
+                - powershell.exe
+                - gomcp.exe
+      output:
+        prefix: "Fetched Content:"
