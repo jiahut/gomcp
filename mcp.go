@@ -93,7 +93,7 @@ func (c *MCPConn) connect() error {
 
 	if c.srv.targets != nil {
 		for {
-			cached, remaining, err := c.srv.targets.Checkout()
+			cached, _, err := c.srv.targets.Checkout()
 			if err != nil {
 				slog.Warn("checkout tab", slog.Any("err", err))
 				break
@@ -107,9 +107,6 @@ func (c *MCPConn) connect() error {
 				c.cdpctx = ctx
 				c.cdpcancel = cancel
 				c.targetID = target.ID(cached.ID)
-				if remaining < c.srv.targets.MinIdle() {
-					c.srv.targets.ScheduleEnsureIdle(c.srv.cdpctx, c.srv.targets.MinIdle())
-				}
 				return nil
 			}
 			cancel()
@@ -123,9 +120,6 @@ func (c *MCPConn) connect() error {
 			c.cdpctx = ctx
 			c.cdpcancel = cancel
 			c.targetID = id
-			if c.srv.targets != nil {
-				c.srv.targets.ScheduleEnsureIdle(c.srv.cdpctx, c.srv.targets.BurstIdle())
-			}
 			return nil
 		}
 		cancel()
@@ -147,9 +141,6 @@ func (c *MCPConn) connect() error {
 
 	if chromedpCtx := chromedp.FromContext(ctx); chromedpCtx != nil && chromedpCtx.Target != nil {
 		c.targetID = chromedpCtx.Target.TargetID
-	}
-	if c.srv.targets != nil {
-		c.srv.targets.ScheduleEnsureIdle(c.srv.cdpctx, c.srv.targets.BurstIdle())
 	}
 
 	return nil

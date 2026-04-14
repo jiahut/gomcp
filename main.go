@@ -152,7 +152,11 @@ func run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.
 		}
 	}
 	if tabStore != nil {
-		tabStore.ScheduleEnsureIdle(cdpctx, tabStore.MinIdle())
+		warmCtx, warmCancel := context.WithTimeout(ctx, 10*time.Second)
+		if _, err := tabStore.EnsureIdle(warmCtx, cdpctx, tabStore.MinIdle()); err != nil && !errors.Is(err, context.Canceled) {
+			slog.Debug("ensure idle tabs", slog.Int("desired", tabStore.MinIdle()), slog.Any("err", err))
+		}
+		warmCancel()
 	}
 
 	switch cmd {
