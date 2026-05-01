@@ -20,33 +20,40 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Set build variables
+        id: vars
+        run: |
+          echo "commit=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
+          echo "date=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> $GITHUB_OUTPUT
+          echo "builtBy=$(go version)" >> $GITHUB_OUTPUT
+
       - name: Building ${{ env.os }} ${{ env.arch }}
         env:
           os: linux
           arch: amd64
         run:
-          GOOS=${{ env.os }} GOARCH=${{ env.arch }} CGO_ENABLED=0 go build -o gomcp-${{ env.os }}-${{ env.arch }}
+          GOOS=${{ env.os }} GOARCH=${{ env.arch }} CGO_ENABLED=0 go build -ldflags "-X main.version=${{ github.ref_name }} -X main.commit=${{ steps.vars.outputs.commit }} -X main.date=${{ steps.vars.outputs.date }} -X main.builtBy=${{ steps.vars.outputs.builtBy }}" -o gomcp-${{ env.os }}-${{ env.arch }}
 
       - name: Building ${{ env.os }} ${{ env.arch }}
         env:
           os: linux
           arch: arm64
         run:
-          GOOS=${{ env.os }} GOARCH=${{ env.arch }} CGO_ENABLED=0 go build -o gomcp-${{ env.os }}-${{ env.arch }}
+          GOOS=${{ env.os }} GOARCH=${{ env.arch }} CGO_ENABLED=0 go build -ldflags "-X main.version=${{ github.ref_name }} -X main.commit=${{ steps.vars.outputs.commit }} -X main.date=${{ steps.vars.outputs.date }} -X main.builtBy=${{ steps.vars.outputs.builtBy }}" -o gomcp-${{ env.os }}-${{ env.arch }}
 
       - name: Building ${{ env.os }} ${{ env.arch }}
         env:
           os: darwin
           arch: amd64
         run:
-          GOOS=${{ env.os }} GOARCH=${{ env.arch }} CGO_ENABLED=0 go build -o gomcp-${{ env.os }}-${{ env.arch }}
+          GOOS=${{ env.os }} GOARCH=${{ env.arch }} CGO_ENABLED=0 go build -ldflags "-X main.version=${{ github.ref_name }} -X main.commit=${{ steps.vars.outputs.commit }} -X main.date=${{ steps.vars.outputs.date }} -X main.builtBy=${{ steps.vars.outputs.builtBy }}" -o gomcp-${{ env.os }}-${{ env.arch }}
 
       - name: Building ${{ env.os }} ${{ env.arch }}
         env:
           os: darwin
           arch: arm64
         run:
-          GOOS=${{ env.os }} GOARCH=${{ env.arch }} CGO_ENABLED=0 go build -o gomcp-${{ env.os }}-${{ env.arch }}
+          GOOS=${{ env.os }} GOARCH=${{ env.arch }} CGO_ENABLED=0 go build -ldflags "-X main.version=${{ github.ref_name }} -X main.commit=${{ steps.vars.outputs.commit }} -X main.date=${{ steps.vars.outputs.date }} -X main.builtBy=${{ steps.vars.outputs.builtBy }}" -o gomcp-${{ env.os }}-${{ env.arch }}
 
       - name: Upload the build
         uses: ncipollo/release-action@v1

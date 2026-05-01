@@ -37,6 +37,13 @@ const (
 	exitFail = 1
 )
 
+var (
+	version = "dev"
+	commit  = "none"
+	date    = "unknown"
+	builtBy = "unknown"
+)
+
 // main starts interruptable context and runs the program.
 func main() {
 	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT)
@@ -63,6 +70,7 @@ func run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.
 	var (
 		verbose = flags.Bool("verbose", false, "enable debug log level")
 		cdp     = flags.String("cdp", "ws://127.0.0.1:9222", "cdp ws to connect")
+		showVer = flags.Bool("version", false, "print version and exit")
 	)
 
 	// usage func declaration.
@@ -78,6 +86,11 @@ func run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.
 	}
 	if err := flags.Parse(args[1:]); err != nil {
 		return err
+	}
+	if *showVer {
+		fmt.Fprintf(stdout, "%s %s (%s)\n", exec, version, commit)
+		fmt.Fprintf(stdout, "built with %s (%s)\n", builtBy, date)
+		return nil
 	}
 
 	args = flags.Args()

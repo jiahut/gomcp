@@ -2,6 +2,12 @@
 # ---------
 OP_VAULT := "mcp"
 
+VERSION ?= $(shell git describe --tags --always 2>/dev/null || echo dev)
+COMMIT  ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo none)
+DATE    ?= $(shell date -u +%Y-%m-%dT%H:%M:%SZ)
+BUILT   ?= $(shell go version)
+LDFLAGS := -X main.version=$(VERSION) -X main.commit=$(COMMIT) -X main.date=$(DATE) -X main.builtBy=$(BUILT)
+
 # Utilies
 # ---------
 
@@ -28,6 +34,13 @@ cdp_env = $(call op_env,$(cdp_keys),$(cdp_secrets))
 
 # Infos
 # -----
+
+.PHONY: build
+
+## Build the gomcp binary
+build:
+	go build -ldflags "$(LDFLAGS)" -o gomcp .
+
 .PHONY: help
 
 ## Display this help screen
