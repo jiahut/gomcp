@@ -409,7 +409,7 @@ func (s *targetStore) write(state targetState) error {
 	if err := os.WriteFile(tmp, data, 0o644); err != nil {
 		return fmt.Errorf("write tab state: %w", err)
 	}
-	return os.Rename(tmp, s.path)
+	return replaceFile(tmp, s.path)
 }
 
 func (state *targetState) compact() {

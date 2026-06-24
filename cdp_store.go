@@ -94,7 +94,7 @@ func (s *cdpEndpointStore) write(state cdpEndpointState) error {
 	if err := os.WriteFile(tmp, data, 0o644); err != nil {
 		return err
 	}
-	return os.Rename(tmp, s.path)
+	return replaceFile(tmp, s.path)
 }
 
 func resolveCDPEndpoint(ctx context.Context, raw string, store *cdpEndpointStore) (string, string, bool, error) {

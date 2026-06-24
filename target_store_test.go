@@ -2,9 +2,31 @@ package main
 
 import (
 	"encoding/json"
+	"path/filepath"
 	"testing"
 	"time"
 )
+
+func TestTargetStoreWriteOverwritesExistingState(t *testing.T) {
+	store := &targetStore{path: filepath.Join(t.TempDir(), "tabs.json")}
+	first := targetState{Idle: []idleTarget{newIdleTarget("first", time.Now())}}
+	second := targetState{Idle: []idleTarget{newIdleTarget("second", time.Now())}}
+
+	if err := store.write(first); err != nil {
+		t.Fatalf("first write: %v", err)
+	}
+	if err := store.write(second); err != nil {
+		t.Fatalf("overwrite state: %v", err)
+	}
+
+	got, err := store.read()
+	if err != nil {
+		t.Fatalf("read overwritten state: %v", err)
+	}
+	if len(got.Idle) != 1 || got.Idle[0].ID != "second" {
+		t.Fatalf("expected overwritten state, got %#v", got.Idle)
+	}
+}
 
 func TestTargetStateSupportsLegacyStringEntries(t *testing.T) {
 	var state targetState
