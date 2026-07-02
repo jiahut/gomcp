@@ -2,10 +2,26 @@ package main
 
 import (
 	"encoding/json"
+	"os"
 	"path/filepath"
 	"testing"
 	"time"
 )
+
+func newTestTargetStore(t *testing.T) *targetStore {
+	t.Helper()
+
+	configRoot := t.TempDir()
+	t.Setenv("AppData", configRoot)
+	t.Setenv("HOME", configRoot)
+	t.Setenv("XDG_CONFIG_HOME", configRoot)
+
+	store, err := newTargetStore(t.Name())
+	if err != nil {
+		t.Fatalf("new target store: %v", err)
+	}
+	return store
+}
 
 func TestTargetStoreWriteOverwritesExistingState(t *testing.T) {
 	store := &targetStore{path: filepath.Join(t.TempDir(), "tabs.json")}
@@ -25,6 +41,59 @@ func TestTargetStoreWriteOverwritesExistingState(t *testing.T) {
 	}
 	if len(got.Idle) != 1 || got.Idle[0].ID != "second" {
 		t.Fatalf("expected overwritten state, got %#v", got.Idle)
+	}
+}
+
+func TestTargetStoreReadTreatsCorruptStateAsEmpty(t *testing.T) {
+	tests := []struct {
+		name string
+		data []byte
+	}{
+		{name: "nul-filled json", data: make([]byte, 64)},
+		{name: "truncated json", data: []byte(`{"idle":[`)},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			store := newTestTargetStore(t)
+			if err := os.WriteFile(store.path, tt.data, 0o644); err != nil {
+				t.Fatalf("write corrupt state: %v", err)
+			}
+
+			got, err := store.read()
+			if err != nil {
+				t.Fatalf("read corrupt state: %v", err)
+			}
+			if len(got.Idle) != 0 {
+				t.Fatalf("expected corrupt state to be treated as empty, got %#v", got.Idle)
+			}
+		})
+	}
+}
+
+func TestTargetStoreCheckinReplacesNULFilledState(t *testing.T) {
+	store := newTestTargetStore(t)
+	if err := os.WriteFile(store.path, make([]byte, 64), 0o644); err != nil {
+		t.Fatalf("write corrupt state: %v", err)
+	}
+
+	checkedInAt := time.Date(2026, 3, 21, 15, 0, 0, 0, time.UTC)
+	want := newIdleTarget("recovered", checkedInAt)
+	if err := store.Checkin(want); err != nil {
+		t.Fatalf("check in target with corrupt state: %v", err)
+	}
+
+	raw, err := os.ReadFile(store.path)
+	if err != nil {
+		t.Fatalf("read replaced state: %v", err)
+	}
+
+	var got targetState
+	if err := json.Unmarshal(raw, &got); err != nil {
+		t.Fatalf("replaced state is not valid JSON: %v; raw=%q", err, raw)
+	}
+	if !idleTargetsEqual(got.Idle, []idleTarget{want}) {
+		t.Fatalf("expected replaced state to contain checked-in target, got %#v", got.Idle)
 	}
 }
 

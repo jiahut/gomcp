@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -393,8 +394,17 @@ func (s *targetStore) read() (targetState, error) {
 		}
 		return state, fmt.Errorf("read tab state: %w", err)
 	}
+	if len(bytes.TrimSpace(b)) == 0 {
+		return state, nil
+	}
 	if err := json.Unmarshal(b, &state); err != nil {
-		return targetState{}, fmt.Errorf("decode tab state: %w", err)
+		// The tab state is only a cache. Reset corrupt state instead of
+		// permanently poisoning checkout/checkin after an interrupted write.
+		slog.Warn("discard corrupt tab state", slog.String("path", s.path), slog.Any("err", err))
+		if err := s.write(targetState{Idle: []idleTarget{}}); err != nil {
+			return targetState{}, fmt.Errorf("reset corrupt tab state: %w", err)
+		}
+		return targetState{}, nil
 	}
 	state.compact()
 	return state, nil
